@@ -15,9 +15,4 @@ export default defineConfig({
       presets: [reactCompilerPreset()] }),
     tailwindcss()
   ],
-  resolve: {
-    alias: {
-      '@': __dirname + '/src'
-    }
-  }
 })
