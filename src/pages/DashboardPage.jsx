@@ -328,7 +328,7 @@ export default function DashboardPage() {
     useState("20:00");
 
   const [range, setRange] =
-    useState("30");
+    useState("60");
 
    const [
   selectedWeekday,
