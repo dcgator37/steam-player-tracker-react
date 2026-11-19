@@ -532,6 +532,26 @@ function SteamTooltip({
   const point =
     payload[0].payload;
 
+    /*
+   * Ignore anything that isn't an
+   * actual player-count observation.
+   */
+  if (
+    !Number.isFinite(
+      point.totalConcurrentPlayers
+    )
+  ) {
+    return null;
+  }
+
+
+  const previousChange =
+    point.changeFromPreviousPercent;
+
+
+  const baselineChange =
+    point.changeFromBaselinePercent;
+
 
   return (
 
@@ -585,6 +605,218 @@ function SteamTooltip({
 
       </div>
 
+        {/* COMPARISONS */}
+
+      <div
+        className="
+          mt-4 space-y-3
+          border-t
+          border-white/[0.06]
+          pt-3
+        "
+      >
+
+        {/* PRIOR OBSERVATION */}
+
+        {Number.isFinite(
+          previousChange
+        ) && (
+
+          <div>
+
+            <div
+              className="
+                text-[10px]
+                font-medium
+                uppercase
+                tracking-wider
+                text-slate-600
+              "
+            >
+
+              vs. prior observation
+
+            </div>
+
+
+            <div
+              className="
+                mt-1 flex
+                items-baseline
+                justify-between
+                gap-4
+              "
+            >
+
+              <span
+                className="
+                  text-xs
+                  text-slate-400
+                "
+              >
+
+                {formatComparisonDate(
+                  point.previousTimestamp
+                )}
+
+              </span>
+
+
+              <span
+                className={
+                  previousChange < 0
+
+                    ? `
+                        text-sm
+                        font-semibold
+                        text-red-400
+                      `
+
+                    : previousChange > 0
+
+                      ? `
+                          text-sm
+                          font-semibold
+                          text-emerald-400
+                        `
+
+                      : `
+                          text-sm
+                          font-semibold
+                          text-slate-300
+                        `
+                }
+              >
+
+                {previousChange < 0
+                  ? "↓ "
+                  : previousChange > 0
+                    ? "↑ "
+                    : ""}
+
+                {formatPercentChange(
+                  previousChange
+                )}
+
+              </span>
+
+            </div>
+
+
+            <div
+              className="
+                mt-1 text-[11px]
+                text-slate-600
+              "
+            >
+
+              Prior count:{" "}
+
+              {formatFullNumber(
+                point.previousPlayers
+              )}
+
+            </div>
+
+          </div>
+
+        )}
+
+
+        {/* BASELINE */}
+
+        {Number.isFinite(
+          baselineChange
+        ) && (
+
+          <div>
+
+            <div
+              className="
+                text-[10px]
+                font-medium
+                uppercase
+                tracking-wider
+                text-slate-600
+              "
+            >
+
+              vs. pre-release baseline
+
+            </div>
+
+
+            <div
+              className="
+                mt-1 flex
+                items-baseline
+                justify-between
+                gap-4
+              "
+            >
+
+              <span
+                className="
+                  text-xs
+                  text-slate-400
+                "
+              >
+
+                {formatCompactNumber(
+                  point.baselineValue
+                )}
+
+              </span>
+
+
+              <span
+                className={
+                  baselineChange < 0
+
+                    ? `
+                        text-sm
+                        font-semibold
+                        text-red-400
+                      `
+
+                    : baselineChange > 0
+
+                      ? `
+                          text-sm
+                          font-semibold
+                          text-emerald-400
+                        `
+
+                      : `
+                          text-sm
+                          font-semibold
+                          text-slate-300
+                        `
+                }
+              >
+
+                {baselineChange < 0
+                  ? "↓ "
+                  : baselineChange > 0
+                    ? "↑ "
+                    : ""}
+
+                {formatPercentChange(
+                  baselineChange
+                )}
+
+              </span>
+
+            </div>
+
+          </div>
+
+        )}
+
+      </div>
+
+
+
 
       <div
         className="
@@ -612,6 +844,68 @@ function SteamTooltip({
       </div>
 
     </div>
+  );
+}
+
+function calculatePercentChange(
+  current,
+  previous
+) {
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(previous) ||
+    previous === 0
+  ) {
+    return null;
+  }
+
+  return (
+    ((current - previous) / previous) *
+    100
+  );
+}
+
+
+function formatPercentChange(
+  value
+) {
+  if (!Number.isFinite(value)) {
+    return "N/A";
+  }
+
+  const absolute =
+    Math.abs(value).toFixed(1);
+
+  if (value > 0) {
+    return `${absolute}% more`;
+  }
+
+  if (value < 0) {
+    return `${absolute}% less`;
+  }
+
+  return "No change";
+}
+
+
+function formatComparisonDate(
+  timestamp
+) {
+  if (!timestamp) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      timeZone:
+        "America/New_York"
+    }
+  ).format(
+    new Date(timestamp)
   );
 }
 
@@ -770,7 +1064,7 @@ export default function Top100DailyChart({
     })
   );
 
-  const chartPoints =
+  const baseChartPoints =
   chartData
     .map(
       point => {
@@ -811,7 +1105,7 @@ export default function Top100DailyChart({
     );
 
     const preReleasePoints =
-  chartPoints.filter(
+  baseChartPoints.filter(
     point =>
       point.timestamp <
         GTA_VI_RELEASE_TIMESTAMP
@@ -839,10 +1133,10 @@ const baselineValue =
     : null;
 
     const firstTimestamp =
-  chartPoints.length > 0
+  baseChartPoints.length > 0
 
     ? Math.min(
-        ...chartPoints.map(
+        ...baseChartPoints.map(
           point =>
             point.timestamp
         )
@@ -852,10 +1146,10 @@ const baselineValue =
 
 
 const lastTimestamp =
-  chartPoints.length > 0
+  baseChartPoints.length > 0
 
     ? Math.max(
-        ...chartPoints.map(
+        ...baseChartPoints.map(
           point =>
             point.timestamp
         )
@@ -922,8 +1216,8 @@ const chartEndTimestamp =
   */
 
 const latestTimestamp =
-  chartPoints[
-    chartPoints.length - 1
+  baseChartPoints[
+    baseChartPoints.length - 1
   ]?.timestamp;
 
 
@@ -936,6 +1230,103 @@ const chartMaxTimestamp =
       )
 
     : GTA_VI_RELEASE_TIMESTAMP;
+
+/*
+ * Add comparison information to
+ * each real observation.
+ *
+ * We remember the prior VALID observation.
+ * This skips missing/null snapshots.
+ */
+let previousValidPoint =
+  null;
+
+
+const chartPoints =
+  baseChartPoints.map(
+    point => {
+
+      const currentPlayers =
+        point.totalConcurrentPlayers;
+
+
+      let previousPlayers =
+        null;
+
+      let previousTimestamp =
+        null;
+
+      let changeFromPreviousPercent =
+        null;
+
+
+      if (
+        Number.isFinite(
+          currentPlayers
+        )
+      ) {
+
+        if (
+          previousValidPoint
+        ) {
+
+          previousPlayers =
+            previousValidPoint
+              .totalConcurrentPlayers;
+
+          previousTimestamp =
+            previousValidPoint
+              .timestamp;
+
+          changeFromPreviousPercent =
+            calculatePercentChange(
+              currentPlayers,
+              previousPlayers
+            );
+        }
+
+
+        /*
+         * This becomes the comparison
+         * point for the next observation.
+         */
+        previousValidPoint =
+          point;
+      }
+
+      const changeFromBaselinePercent =
+        Number.isFinite(
+          currentPlayers
+        ) &&
+        Number.isFinite(
+          baselineValue
+        ) &&
+        baselineValue !== 0
+
+          ? calculatePercentChange(
+              currentPlayers,
+              baselineValue
+            )
+
+          : null;
+
+          return {
+        ...point,
+
+        previousPlayers,
+
+        previousTimestamp,
+
+        changeFromPreviousPercent,
+
+        baselineValue,
+
+        changeFromBaselinePercent
+      };
+    }
+  );
+
+
 
 
   if (
