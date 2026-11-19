@@ -149,7 +149,7 @@ export function processProfileQueue({
 }
 
   export async function fetchDailyTop100History({
-    time, days
+    time, days, weekday
   }) {
     const params =
     new URLSearchParams({
@@ -158,7 +158,9 @@ export function processProfileQueue({
         String(time),
 
       days:
-        String(days)
+        String(days),
+
+      weekday: String(weekday)
     });
 
 

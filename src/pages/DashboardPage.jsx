@@ -80,6 +80,66 @@ const timeOptions = [
     value: "00:00",
     label: "12:00 AM ET"
   }
+  ,
+  {
+    value: "00:15",
+    label: "12:15 AM ET"
+  }
+  ,
+  {
+    value: "00:30",
+    label: "12:30 AM ET"
+  }
+  ,
+  {
+    value: "00:45",
+    label: "12:45 AM ET"
+  }
+  ,
+  {
+    value: "01:00",
+    label: "1:00 AM ET"
+  }
+  ,
+  {
+    value: "01:15",
+    label: "1:15 AM ET"
+  }
+  ,
+  {
+    value: "01:30",
+    label: "1:30 AM ET"
+  }
+  ,
+  {
+    value: "01:45",
+    label: "1:45 AM ET"
+  }
+  ,
+  {
+    value: "02:00",
+    label: "02:00 AM ET"
+  }
+  ,
+  {
+    value: "02:15",
+    label: "2:15 AM ET"
+  }
+  ,
+  {
+    value: "02:30",
+    label: "2:30 AM ET"
+  }
+  ,
+  {
+    value: "02:45",
+    label: "2:45 AM ET"
+  }
+  ,
+  {
+    value: "03:00",
+    label: "03:00 AM ET"
+  }
 ];
 
 
@@ -105,10 +165,87 @@ const rangeOptions = [
     label: "90 days"
   },
   {
+    value: "180",
+    label: "180 days"
+  },
+  {
+    value: "365",
+    label: "365 days"
+  },
+  {
     value: "all",
     label: "All data"
   }
 ];
+
+const WEEKDAYS = [
+   {
+    value: "all",
+    label: "All Days"
+  },
+  {
+    value: 0,
+    label: "Sunday"
+  },
+
+  {
+    value: 1,
+    label: "Monday"
+  },
+
+  {
+    value: 2,
+    label: "Tuesday"
+  },
+
+  {
+    value: 3,
+    label: "Wednesday"
+  },
+
+  {
+    value: 4,
+    label: "Thursday"
+  },
+
+  {
+    value: 5,
+    label: "Friday"
+  },
+
+  {
+    value: 6,
+    label: "Saturday"
+  }
+
+];
+
+
+function getCurrentEasternWeekday() {
+
+  const weekdayName =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        weekday:
+          "long",
+
+        timeZone:
+          "America/New_York"
+      }
+    ).format(
+      new Date()
+    );
+
+
+  return (
+    WEEKDAYS.find(
+      day =>
+        day.label ===
+        weekdayName
+    )?.value ?? "0"
+  );
+}
 
 function formatTimeLabel(
   time
@@ -193,6 +330,15 @@ export default function DashboardPage() {
   const [range, setRange] =
     useState("30");
 
+   const [
+  selectedWeekday,
+  setSelectedWeekday
+] =
+  useState(
+    () =>
+      getCurrentEasternWeekday()
+  );
+
   const {
     data: summary,
     isPending: summaryPending,
@@ -272,6 +418,24 @@ export default function DashboardPage() {
 
   controls={
     <>
+       <SelectField
+
+        label="Day of the week"
+
+        value={selectedWeekday}
+
+        onChange={
+          event =>
+            setSelectedWeekday(
+              event.target.value
+            )
+        }
+
+        options={
+          WEEKDAYS
+        }
+      />
+
 
       <SelectField
 
@@ -317,6 +481,7 @@ export default function DashboardPage() {
   <Top100DailyChart
     time={time}
     days={range}
+    weekday={selectedWeekday}
   />
 
 </ChartPanel>

@@ -9,12 +9,345 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip
+  Tooltip,
+  Legend,
+  ReferenceLine
 } from "recharts";
 
 import {
   fetchDailyTop100History
 } from "../lib/api";
+
+const GTA_VI_RELEASE_DATE =
+  import.meta.env
+    .VITE_GTA_VI_RELEASE_DATE ||
+  "2026-11-19";
+
+
+/*
+ * Noon Eastern on release day.
+ *
+ * We're using the marker as a DATE marker,
+ * not claiming the exact release hour.
+ */
+const GTA_VI_RELEASE_TIMESTAMP =
+  Date.parse(
+    `${GTA_VI_RELEASE_DATE}T00:00:00-05:00`
+  );
+
+const ONE_DAY =
+  24 *
+  60 *
+  60 *
+  1000;
+
+  function addBaseline(points) {
+
+  /*
+   * Only use real observations occurring
+   * BEFORE GTA VI's release.
+   */
+  const preReleasePoints =
+    points.filter(
+      point =>
+        Number.isFinite(
+          point.timestamp
+        ) &&
+        Number.isFinite(
+          point.totalConcurrentPlayers
+        ) &&
+        point.timestamp <
+          GTA_VI_RELEASE_TIMESTAMP
+    );
+
+
+  /*
+   * We need at least one valid observation.
+   */
+  if (
+    preReleasePoints.length === 0
+  ) {
+
+    return {
+      points,
+      baselineValue: null
+    };
+  }
+
+
+  /*
+   * Arithmetic mean of the selected
+   * pre-release observations.
+   */
+  const baselineValue =
+    Math.round(
+      preReleasePoints.reduce(
+        (sum, point) =>
+          sum +
+          point.totalConcurrentPlayers,
+        0
+      )
+      /
+      preReleasePoints.length
+    );
+
+
+  /*
+   * Show the baseline only through
+   * GTA VI's release date.
+   */
+  const baselinePoints =
+    points.map(
+      point => ({
+        ...point,
+
+        baselinePlayers:
+          point.timestamp <=
+          GTA_VI_RELEASE_TIMESTAMP
+            ? baselineValue
+            : null
+      })
+    );
+
+
+  /*
+   * Add a synthetic point exactly on
+   * GTA VI's release date.
+   *
+   * This allows the horizontal baseline
+   * to visually extend all the way to
+   * the release marker even though there
+   * may not be an actual observation at
+   * exactly midnight.
+   */
+  const hasReleasePoint =
+    baselinePoints.some(
+      point =>
+        point.timestamp ===
+        GTA_VI_RELEASE_TIMESTAMP
+    );
+
+
+  if (!hasReleasePoint) {
+
+    baselinePoints.push({
+      timestamp:
+        GTA_VI_RELEASE_TIMESTAMP,
+
+      totalConcurrentPlayers:
+        null,
+
+      baselinePlayers:
+        baselineValue,
+
+      sampledAt:
+        null,
+
+      isBaselineEndpoint:
+        true
+    });
+  }
+
+
+  baselinePoints.sort(
+    (a, b) =>
+      a.timestamp -
+      b.timestamp
+  );
+
+
+  return {
+    points: baselinePoints,
+    baselineValue
+  };
+}
+
+function addTrendline(
+  points
+) {
+
+  const valid =
+    points.filter(
+      point =>
+
+        Number.isFinite(
+          point.timestamp
+        )
+
+        &&
+
+        Number.isFinite(
+          point.totalConcurrentPlayers
+        )
+    );
+
+
+  if (
+    valid.length < 2
+  ) {
+
+    return points.map(
+      point => ({
+
+        ...point,
+
+        trendPlayers:
+          null
+      })
+    );
+  }
+
+
+  /*
+   * Center X around the first observation.
+   * This avoids doing regression against
+   * enormous Unix timestamp numbers.
+   */
+  const firstTimestamp =
+    valid[0]
+      .timestamp;
+
+
+  const regression =
+    valid.map(
+      point => ({
+
+        x:
+          (
+            point.timestamp -
+            firstTimestamp
+          )
+          /
+          ONE_DAY,
+
+        y:
+          point
+            .totalConcurrentPlayers
+      })
+    );
+
+
+  const count =
+    regression.length;
+
+
+  const meanX =
+    regression.reduce(
+      (
+        sum,
+        point
+      ) =>
+        sum +
+        point.x,
+      0
+    )
+    /
+    count;
+
+
+  const meanY =
+    regression.reduce(
+      (
+        sum,
+        point
+      ) =>
+        sum +
+        point.y,
+      0
+    )
+    /
+    count;
+
+
+  let numerator =
+    0;
+
+
+  let denominator =
+    0;
+
+
+  for (
+    const point
+    of regression
+  ) {
+
+    numerator +=
+      (
+        point.x -
+        meanX
+      )
+      *
+      (
+        point.y -
+        meanY
+      );
+
+
+    denominator +=
+      (
+        point.x -
+        meanX
+      )
+      ** 2;
+  }
+
+
+  const slope =
+    denominator === 0
+      ? 0
+      : numerator /
+        denominator;
+
+
+  const intercept =
+    meanY -
+    slope *
+    meanX;
+
+
+  return points.map(
+    point => {
+
+      if (
+        !Number.isFinite(
+          point.timestamp
+        )
+      ) {
+
+        return {
+
+          ...point,
+
+          trendPlayers:
+            null
+        };
+      }
+
+
+      const x =
+        (
+          point.timestamp -
+          firstTimestamp
+        )
+        /
+        ONE_DAY;
+
+
+      return {
+
+        ...point,
+
+        trendPlayers:
+          Math.round(
+            intercept +
+            slope *
+            x
+          )
+      };
+    }
+  );
+}
 
 
 function formatCompactNumber(value) {
@@ -62,7 +395,7 @@ function dateFromParts(dateString) {
 }
 
 
-function formatShortDate(dateString) {
+/* function formatShortDate(dateString) {
 
   return new Intl.DateTimeFormat(
     "en-US",
@@ -75,6 +408,58 @@ function formatShortDate(dateString) {
       dateString
     )
   );
+} */
+
+function formatShortDate(value) {
+  const date =
+    typeof value === "number"
+      ? new Date(value)
+      : new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      timeZone:
+        "America/New_York"
+    }
+  ).format(date);
+}
+
+function formatFullDate(value) {
+  const date =
+    typeof value === "number"
+      ? new Date(value)
+      : new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone:
+        "America/New_York"
+    }
+  ).format(date);
 }
 
 
@@ -169,7 +554,7 @@ function SteamTooltip({
         "
       >
 
-        {formatLongDate(label)}
+        {formatFullDate(label)}
 
       </div>
 
@@ -233,7 +618,8 @@ function SteamTooltip({
 
 export default function Top100DailyChart({
   time,
-  days
+  days,
+  weekday
 }) {
 
   const {
@@ -251,14 +637,16 @@ export default function Top100DailyChart({
         "daily",
         {
           time,
-          days
+          days,
+          weekday
         }
       ],
 
       queryFn: () =>
         fetchDailyTop100History({
           time,
-          days
+          days,
+          weekday
         }),
 
       staleTime:
@@ -362,6 +750,193 @@ export default function Top100DailyChart({
   const chartData =
     data?.points ?? [];
 
+  const preparedPoints =
+  chartData.map(
+    point => ({
+      ...point,
+
+      timestamp:
+        new Date(
+          point.targetTimestamp
+        ).getTime(),
+
+      totalConcurrentPlayers:
+        point.totalConcurrentPlayers ===
+        null
+          ? null
+          : Number(
+              point.totalConcurrentPlayers
+            )
+    })
+  );
+
+  const chartPoints =
+  chartData
+    .map(
+      point => {
+
+        const dateValue =
+          point.targetTimestamp ??
+          point.sampledAt ??
+          point.date;
+
+
+        return {
+          ...point,
+
+          timestamp:
+            new Date(
+              dateValue
+            ).getTime(),
+
+          totalConcurrentPlayers:
+            point.totalConcurrentPlayers ===
+            null ||
+            point.totalConcurrentPlayers ===
+            undefined
+
+              ? null
+
+              : Number(
+                  point.totalConcurrentPlayers
+                )
+        };
+      }
+    )
+    .filter(
+      point =>
+        Number.isFinite(
+          point.timestamp
+        )
+    );
+
+    const preReleasePoints =
+  chartPoints.filter(
+    point =>
+      point.timestamp <
+        GTA_VI_RELEASE_TIMESTAMP
+      &&
+      Number.isFinite(
+        point.totalConcurrentPlayers
+      )
+  );
+
+
+const baselineValue =
+  preReleasePoints.length > 0
+
+    ? Math.round(
+        preReleasePoints.reduce(
+          (sum, point) =>
+            sum +
+            point.totalConcurrentPlayers,
+          0
+        )
+        /
+        preReleasePoints.length
+      )
+
+    : null;
+
+    const firstTimestamp =
+  chartPoints.length > 0
+
+    ? Math.min(
+        ...chartPoints.map(
+          point =>
+            point.timestamp
+        )
+      )
+
+    : GTA_VI_RELEASE_TIMESTAMP;
+
+
+const lastTimestamp =
+  chartPoints.length > 0
+
+    ? Math.max(
+        ...chartPoints.map(
+          point =>
+            point.timestamp
+        )
+      )
+
+    : GTA_VI_RELEASE_TIMESTAMP;
+
+
+/*
+ * This is CRITICAL right now.
+ *
+ * Since GTA VI has not released yet,
+ * our actual data ends before Nov 19.
+ *
+ * We have to explicitly extend the
+ * X-axis through Nov 19 or Recharts
+ * cannot display the release line.
+ */
+const chartEndTimestamp =
+  Math.max(
+    lastTimestamp,
+    GTA_VI_RELEASE_TIMESTAMP
+  );
+
+/* const {
+  points: chartPoints,
+  baselineValue
+} =
+  addBaseline(
+    preparedPoints
+  ); */
+
+  /*   const chartPoints =
+  addTrendline(
+
+    chartData.map(
+      point => ({
+
+        ...point,
+
+1
+        *
+         * targetTimestamp means the X-axis
+         * remains correct even if the actual
+         * collection occurred a few minutes
+         * away from exactly 8 PM.
+         *
+        timestamp:
+          new Date(
+            point.targetTimestamp
+          ).getTime(),
+
+
+        totalConcurrentPlayers:
+          point.totalConcurrentPlayers ===
+          null
+            ? null
+            : Number(
+                point.totalConcurrentPlayers
+              )
+      })
+    )
+  );
+  */
+
+const latestTimestamp =
+  chartPoints[
+    chartPoints.length - 1
+  ]?.timestamp;
+
+
+const chartMaxTimestamp =
+  latestTimestamp
+
+    ? Math.max(
+        latestTimestamp,
+        GTA_VI_RELEASE_TIMESTAMP
+      )
+
+    : GTA_VI_RELEASE_TIMESTAMP;
+
 
   if (
     chartData.length === 0
@@ -384,6 +959,35 @@ export default function Top100DailyChart({
     );
   }
 
+  console.log({
+  firstTimestamp:
+    new Date(
+      firstTimestamp
+    ).toString(),
+
+  lastTimestamp:
+    new Date(
+      lastTimestamp
+    ).toString(),
+
+  gtaRelease:
+    new Date(
+      GTA_VI_RELEASE_TIMESTAMP
+    ).toString(),
+
+  chartEnd:
+    new Date(
+      chartEndTimestamp
+    ).toString(),
+
+  baselineValue,
+
+  chartPoints:
+    chartPoints.length,
+
+  preReleasePoints:
+    preReleasePoints.length
+});
 
   return (
 
@@ -424,7 +1028,8 @@ export default function Top100DailyChart({
 
         <LineChart
 
-          data={chartData}
+          //data={chartData}
+          data={chartPoints}
 
           margin={{
             top: 16,
@@ -435,7 +1040,6 @@ export default function Top100DailyChart({
         >
 
           <CartesianGrid
-
             stroke="
               rgba(148, 163, 184, 0.08)
             "
@@ -444,11 +1048,18 @@ export default function Top100DailyChart({
 
             vertical={false}
           />
-
-
+          
           <XAxis
 
-            dataKey="date"
+            //dataKey="date"
+            dataKey="timestamp"
+            //new
+            type="number"
+            scale="time"
+            domain={[
+              firstTimestamp,
+              chartEndTimestamp
+            ]}
 
             tickFormatter={
               formatShortDate
@@ -495,7 +1106,6 @@ export default function Top100DailyChart({
             ]}
           />
 
-
           <Tooltip
 
             content={
@@ -513,6 +1123,40 @@ export default function Top100DailyChart({
                 "4 4"
             }}
           />
+
+          <Legend />
+
+
+    {/* GTA VI RELEASE */}
+
+    <ReferenceLine
+
+      x={
+        GTA_VI_RELEASE_TIMESTAMP
+      }
+
+      stroke="#f59e0b"
+
+      strokeWidth={2}
+
+      strokeDasharray="5 5"
+
+      label={{
+
+        value:
+          "GTA VI • Nov 19",
+
+        position:
+          "insideTopRight",
+
+        fill:
+          "#f59e0b",
+
+        fontSize:
+          11
+      }}
+
+    />
 
 
           <Line
@@ -548,6 +1192,63 @@ export default function Top100DailyChart({
 
             connectNulls={false}
           />
+
+          {baselineValue !== null && (
+
+  <ReferenceLine
+
+    segment={[
+      {
+        x:
+          firstTimestamp,
+
+        y:
+          baselineValue
+      },
+
+      {
+        x:
+          GTA_VI_RELEASE_TIMESTAMP,
+
+        y:
+          baselineValue
+      }
+    ]}
+
+    stroke="#8b5cf6"
+
+    strokeWidth={2}
+
+    strokeDasharray="7 5"
+
+    label={{
+      value:
+        `Baseline ${new Intl.NumberFormat(
+          "en-US",
+          {
+            notation:
+              "compact",
+
+            maximumFractionDigits:
+              2
+          }
+        ).format(
+          baselineValue
+        )}`,
+
+      position:
+        "insideTopLeft",
+
+      fill:
+        "#a78bfa",
+
+      fontSize:
+        11
+    }}
+
+  />
+
+)}
 
         </LineChart>
 
